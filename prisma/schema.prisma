@@ -13,3 +13,106 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model WhatsAppSession {
+  id          String   @id @default(cuid())
+  sessionId   String   @unique
+  isConnected Boolean  @default(false)
+  qrCode      String?
+  phoneNumber String?
+  status      String   @default("disconnected") // disconnected, connecting, connected, error
+  lastSeen    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  messages    Message[]
+  contacts    Contact[]
+  groups      Group[]
+  
+  @@map("whatsapp_sessions")
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  jid       String   // WhatsApp ID
+  name      String?
+  pushName  String?
+  phone     String?
+  isBlocked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  sessionId String
+  session   WhatsAppSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  
+  @@unique([sessionId, jid])
+  @@map("contacts")
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  jid         String   // Group ID
+  name        String
+  description String?
+  isAdmin     Boolean  @default(false)
+  memberCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  sessionId String
+  session   WhatsAppSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  
+  @@unique([sessionId, jid])
+  @@map("groups")
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  messageId   String   // WhatsApp message ID
+  fromJid     String   // Sender JID
+  toJid       String   // Recipient JID
+  type        String   // text, image, video, audio, document, etc.
+  content     String?  // Message content
+  mediaUrl    String?  // Media URL if applicable
+  caption     String?  // Media caption
+  isFromMe    Boolean  @default(false)
+  isGroup     Boolean  @default(false)
+  status      String   @default("sent") // sent, delivered, read, failed
+  timestamp   DateTime
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  sessionId String
+  session   WhatsAppSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  
+  @@unique([sessionId, messageId])
+  @@map("messages")
+}
+
+model BulkMessage {
+  id          String   @id @default(cuid())
+  name        String   // Campaign name
+  content     String   // Message content
+  type        String   @default("text") // text, image, video, etc.
+  mediaUrl    String?  // Media URL if applicable
+  recipients  String[] // Array of JIDs
+  status      String   @default("pending") // pending, sending, completed, failed
+  sentCount   Int      @default(0)
+  failedCount Int      @default(0)
+  scheduledAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("bulk_messages")
+}
+
+model Settings {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  
+  @@map("settings")
+}

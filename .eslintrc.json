@@ -1,3 +1,14 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "ignorePatterns": [
+    "src/generated/**/*",
+    "node_modules/**/*",
+    ".next/**/*"
+  ],
+  "rules": {
+    "jsx-a11y/alt-text": ["error", {
+      "elements": ["img"],
+      "img": ["Image"]
+    }]
+  }
 }
