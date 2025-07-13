@@ -104,14 +104,6 @@ export class WhatsAppService {
           console.log(`Connection closed for session ${this.sessionId}. Status code: ${statusCode}`)
           
           // Handle specific error codes
-          if (statusCode === 515) {
-            console.log('Stream error 515 detected - session may need re-authentication')
-            await this.updateSessionStatus('error')
-            this.isConnecting = false
-            this.socket = null
-            this.reconnectAttempts = 0
-            return
-          }
           
           await this.updateSessionStatus('disconnected')
           
