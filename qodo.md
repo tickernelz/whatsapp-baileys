@@ -73,14 +73,32 @@ prisma/schema.prisma     # Database schema
 - **TailwindCSS** - Use `cn()` helper for conditional classes
 - **Database Operations** - Always verify session exists first
 
+## Documentation Search Strategy
+
+When searching for the latest documentation, follow this priority order:
+
+### 1. Context7 First (Primary Source)
+- **Baileys Wiki**: Use library ID `context7/baileys_wiki-docs-intro`
+- **Baileys Repository**: Use library ID `whiskeysockets/baileys`
+- **Next.js**: Use library ID `/vercel/next.js`
+- **Prisma**: Use library ID `/prisma/prisma`
+- **TailwindCSS**: Use library ID `/tailwindlabs/tailwindcss`
+
+### 2. DeepWiki (Secondary Source)
+If Context7 doesn't provide sufficient information:
+- Use `ask_question` with repository name (e.g., "whiskeysockets/baileys")
+- Use `read_wiki_contents` for comprehensive documentation
+- Use `read_wiki_structure` to explore available topics
+
+### 3. Web Search (Last Resort)
+If both Context7 and DeepWiki don't help:
+- Use `web_search` for the latest updates and community solutions
+- Focus on official documentation sites and GitHub issues
+- Verify information currency and reliability
+
 ## Baileys Documentation
 
-For detailed information about the Baileys WhatsApp library:
-
-- **Context7 Baileys Wiki**: Use library ID `context7/baileys_wiki-docs-intro`
-- **Baileys Repository**: Use library ID `whiskeysockets/baileys`
-
-These Context7 resources contain comprehensive documentation about:
+Context7 resources contain comprehensive documentation about:
 - Baileys API methods and events
 - WhatsApp Web protocol details
 - Authentication and session management
