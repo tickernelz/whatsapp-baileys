@@ -15,19 +15,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Session ID is required' }, { status: 400 })
     }
 
-    const service = whatsappManager.getInstance(sessionId)
-    
-    // Get session from database
+    // First check if session exists in database or has auth files
     const session = await prisma.whatsAppSession.findUnique({
       where: { sessionId }
     })
 
-    return NextResponse.json({
-      sessionId,
-      isConnected: service.isConnected(),
-      connectionState: service.getConnectionState(),
-      session: session || null
-    })
+    const authDir = path.join(process.cwd(), 'auth_sessions', sessionId)
+    const hasAuthFiles = fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0
+
+    // Only get service instance if session exists in DB or has auth files
+    if (session || hasAuthFiles) {
+      const service = whatsappManager.getInstance(sessionId)
+      
+      return NextResponse.json({
+        sessionId,
+        isConnected: service.isConnected(),
+        connectionState: service.getConnectionState(),
+        session: session || null
+      })
+    } else {
+      // Session doesn't exist yet
+      return NextResponse.json({
+        sessionId,
+        isConnected: false,
+        connectionState: 'disconnected',
+        session: null
+      })
+    }
 
   } catch (error) {
     console.error('Status check error:', error)

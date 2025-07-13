@@ -45,10 +45,7 @@ export class WhatsAppService {
     this.prisma = new PrismaClient()
     this.connectionState = 'disconnected' // Initialize connection state
     
-    // Create auth directory if it doesn't exist
-    if (!fs.existsSync(this.authDir)) {
-      fs.mkdirSync(this.authDir, { recursive: true })
-    }
+    // Note: Auth directory will be created only when connecting, not in constructor
   }
 
   async connect(): Promise<void> {
@@ -66,6 +63,12 @@ export class WhatsAppService {
     console.log(`Starting connection for session: ${this.sessionId}`)
 
     try {
+      // Create auth directory only when actually connecting
+      if (!fs.existsSync(this.authDir)) {
+        fs.mkdirSync(this.authDir, { recursive: true })
+        console.log(`Created auth directory for session: ${this.sessionId}`)
+      }
+
       // Clean up any existing socket first
       if (this.socket) {
         try {

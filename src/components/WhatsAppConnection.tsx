@@ -21,6 +21,7 @@ interface WhatsAppConnectionProps {
 
 export default function WhatsAppConnection({ sessionId: propSessionId, onSessionChange }: WhatsAppConnectionProps) {
   const [sessionId, setSessionId] = useState(propSessionId || 'default')
+  const [inputSessionId, setInputSessionId] = useState(propSessionId || 'default') // Separate state for input
   const [status, setStatus] = useState<ConnectionStatus | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [qrCode, setQrCode] = useState<string | null>(null)
@@ -44,15 +45,23 @@ export default function WhatsAppConnection({ sessionId: propSessionId, onSession
   useEffect(() => {
     if (propSessionId && propSessionId !== sessionId) {
       setSessionId(propSessionId)
+      setInputSessionId(propSessionId)
       setQrCode(null)
       setError(null)
     }
   }, [propSessionId, sessionId])
 
   const connect = async () => {
-    if (!sessionId.trim()) {
+    if (!inputSessionId.trim()) {
       setError('Please enter a session ID')
       return
+    }
+
+    // Update the actual sessionId only when connecting
+    const connectingSessionId = inputSessionId.trim()
+    setSessionId(connectingSessionId)
+    if (onSessionChange) {
+      onSessionChange(connectingSessionId)
     }
 
     setIsConnecting(true)
@@ -63,7 +72,7 @@ export default function WhatsAppConnection({ sessionId: propSessionId, onSession
       const response = await fetch('/api/whatsapp/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId })
+        body: JSON.stringify({ sessionId: connectingSessionId })
       })
       
       const data = await response.json()
@@ -81,16 +90,13 @@ export default function WhatsAppConnection({ sessionId: propSessionId, onSession
       // Poll for connection status
       const pollInterval = setInterval(async () => {
         await checkStatus()
-        const currentStatus = await fetch(`/api/whatsapp/status?sessionId=${sessionId}`)
+        const currentStatus = await fetch(`/api/whatsapp/status?sessionId=${connectingSessionId}`)
         const currentData = await currentStatus.json()
         
         if (currentData.isConnected) {
           clearInterval(pollInterval)
           setIsConnecting(false)
           setQrCode(null)
-          if (onSessionChange) {
-            onSessionChange(sessionId)
-          }
         }
       }, 2000)
       
@@ -143,10 +149,8 @@ export default function WhatsAppConnection({ sessionId: propSessionId, onSession
   }
 
   const handleSessionIdChange = (value: string) => {
-    setSessionId(value)
-    if (onSessionChange) {
-      onSessionChange(value)
-    }
+    setInputSessionId(value)
+    // Don't trigger onSessionChange until user actually connects
   }
 
   return (
@@ -164,7 +168,7 @@ export default function WhatsAppConnection({ sessionId: propSessionId, onSession
         <div className="flex gap-2">
           <Input
             placeholder="Session ID (e.g., my-session)"
-            value={sessionId}
+            value={inputSessionId}
             onChange={(e) => handleSessionIdChange(e.target.value)}
             className="flex-1"
             disabled={isConnecting}
@@ -175,7 +179,7 @@ export default function WhatsAppConnection({ sessionId: propSessionId, onSession
               Disconnect
             </Button>
           ) : (
-            <Button onClick={connect} disabled={isConnecting || !sessionId.trim()}>
+            <Button onClick={connect} disabled={isConnecting || !inputSessionId.trim()}>
               {isConnecting ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
