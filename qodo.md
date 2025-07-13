@@ -78,7 +78,7 @@ prisma/schema.prisma     # Database schema
 When searching for the latest documentation, follow this priority order:
 
 ### 1. DeepWiki (Primary Source)
-- Use `ask_question` with repository name (e.g., "whiskeysockets/baileys")
+- Use `ask_question` with repository name (e.g., "WhiskeySockets/Baileys")
 - Use `read_wiki_contents` for comprehensive documentation
 - Use `read_wiki_structure` to explore available topics
 

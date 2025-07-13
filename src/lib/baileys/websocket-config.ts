@@ -29,16 +29,20 @@ export const createWebSocketConfig = (): Partial<SocketConfig> => {
 
   // Add server-specific configurations
   if (typeof window === 'undefined') {
-    // Server-side specific configurations
+    // Server-side specific configurations - create a minimal logger
+    // Using unknown first then casting to satisfy TypeScript strict checking
     config.logger = {
-      level: 'error', // Reduce logging on server
-      child: () => config.logger!,
+      level: 'error',
+      child: function() { return this },
       trace: () => {},
       debug: () => {},
       info: () => {},
-      warn: console.warn,
-      error: console.error,
-    }
+      warn: () => {},
+      error: () => {},
+      fatal: () => {},
+      silent: () => {},
+      flush: () => {},
+    } as unknown as SocketConfig['logger']
   }
 
   return config

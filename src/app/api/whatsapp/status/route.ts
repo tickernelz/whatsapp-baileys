@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
     const sessionId = searchParams.get('sessionId')
+    const restore = searchParams.get('restore') === 'true'
 
     if (!sessionId) {
       return NextResponse.json({ error: 'Session ID is required' }, { status: 400 })
@@ -29,11 +30,19 @@ export async function GET(request: NextRequest) {
     if (session || hasAuthFiles) {
       const service = whatsappManager.getInstance(sessionId)
       
+      // If restore is requested and session has auth files but isn't connected
+      if (restore && hasAuthFiles && !service.isConnected()) {
+        console.log(`Attempting to restore session ${sessionId}`)
+        await service.refreshConnectionState()
+      }
+      
       return NextResponse.json({
         sessionId,
         isConnected: service.isConnected(),
         connectionState: service.getConnectionState(),
-        session: session || null
+        hasAuthFiles,
+        session: session || null,
+        restored: restore
       })
     } else {
       // Session doesn't exist yet
@@ -41,7 +50,9 @@ export async function GET(request: NextRequest) {
         sessionId,
         isConnected: false,
         connectionState: 'disconnected',
-        session: null
+        hasAuthFiles: false,
+        session: null,
+        restored: false
       })
     }
 

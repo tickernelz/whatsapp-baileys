@@ -9,7 +9,8 @@ import makeWASocket, {
   Contact,
   GroupMetadata,
   downloadMediaMessage,
-  getContentType
+  getContentType,
+  makeInMemoryStore
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 import { PrismaClient } from '@/generated/prisma'
@@ -32,6 +33,7 @@ export class WhatsAppService {
   private reconnectAttempts = 0
   private maxReconnectAttempts = 5
   private connectionState: string = 'disconnected'
+  private store: ReturnType<typeof makeInMemoryStore> | null = null
   
   // Event callbacks
   public onQRCode?: (qr: string) => void
@@ -39,13 +41,49 @@ export class WhatsAppService {
   public onMessage?: (message: WAMessage) => void
   public onContactsUpdate?: (contacts: Contact[]) => void
 
+  private async autoRestoreSession(): Promise<void> {
+    try {
+      // Check if auth files exist and are valid
+      if (this.hasValidAuthFiles()) {
+        console.log(`Auto-restoring session for: ${this.sessionId}`)
+        // Don't auto-connect immediately, just mark as available for restoration
+        this.connectionState = 'disconnected'
+        await this.updateSessionStatus('disconnected')
+      }
+    } catch (error) {
+      console.error(`Failed to auto-restore session ${this.sessionId}:`, error)
+    }
+  }
+
+  private hasValidAuthFiles(): boolean {
+    try {
+      if (!fs.existsSync(this.authDir)) {
+        return false
+      }
+      
+      const files = fs.readdirSync(this.authDir)
+      // Check for essential auth files
+      const hasCredsFile = files.some(file => file === 'creds.json')
+      const hasSessionFiles = files.some(file => file.startsWith('session-'))
+      
+      return hasCredsFile && hasSessionFiles && files.length > 2
+    } catch (error) {
+      console.error(`Error checking auth files for ${this.sessionId}:`, error)
+      return false
+    }
+  }
+
   constructor(config: WhatsAppServiceConfig) {
     this.sessionId = config.sessionId
     this.authDir = path.join(process.cwd(), 'auth_sessions', this.sessionId)
     this.prisma = new PrismaClient()
     this.connectionState = 'disconnected' // Initialize connection state
     
-    // Note: Auth directory will be created only when connecting, not in constructor
+    // Initialize store for better contact and chat management
+    this.store = makeInMemoryStore({})
+    
+    // Auto-restore session if auth files exist
+    this.autoRestoreSession()
   }
 
   async connect(): Promise<void> {
@@ -89,6 +127,11 @@ export class WhatsAppService {
         auth: state,
         ...wsConfig,
       })
+
+      // Bind store to socket for better contact/chat management
+      if (this.store) {
+        this.store.bind(this.socket.ev)
+      }
 
       console.log(`Socket created for session ${this.sessionId}`)
       this.connectionState = 'connecting'
@@ -181,6 +224,22 @@ export class WhatsAppService {
         }
       })
 
+      // Handle messaging history sync for contacts (more reliable than contacts.upsert)
+      this.socket.ev.on('messaging-history.set', async ({ contacts: newContacts, chats, messages }) => {
+        console.log(`History sync received for session ${this.sessionId}:`, {
+          contactsCount: newContacts?.length || 0,
+          chatsCount: chats?.length || 0,
+          messagesCount: messages?.length || 0
+        })
+        
+        if (newContacts && newContacts.length > 0) {
+          await this.handleContactsUpdate(newContacts)
+          if (this.onContactsUpdate) {
+            this.onContactsUpdate(newContacts)
+          }
+        }
+      })
+
       // Save credentials when updated
       this.socket.ev.on('creds.update', saveCreds)
 
@@ -260,11 +319,36 @@ export class WhatsAppService {
   }
 
   async getContacts(): Promise<Contact[]> {
-    // Get contacts from database
-    const contacts = await this.prisma.contact.findMany({
-      where: { sessionId: this.sessionId }
-    })
-    return contacts as Contact[]
+    try {
+      // Get contacts from database
+      const dbContacts = await this.prisma.contact.findMany({
+        where: { sessionId: this.sessionId }
+      })
+
+      // Also get contacts from store if available
+      let storeContacts: Contact[] = []
+      if (this.store && this.store.contacts) {
+        storeContacts = Object.values(this.store.contacts)
+      }
+
+      // Merge contacts, prioritizing store contacts as they're more up-to-date
+      const contactMap = new Map<string, Contact>()
+      
+      // Add database contacts first
+      dbContacts.forEach(contact => {
+        contactMap.set(contact.jid, contact as Contact)
+      })
+      
+      // Override with store contacts (more recent)
+      storeContacts.forEach(contact => {
+        contactMap.set(contact.id, contact)
+      })
+
+      return Array.from(contactMap.values())
+    } catch (error) {
+      console.error('Failed to get contacts:', error)
+      return []
+    }
   }
 
   async getChats() {
@@ -351,22 +435,25 @@ export class WhatsAppService {
         await this.updateSessionStatus('disconnected')
       }
     } else {
-      // Check if we have auth credentials but no active socket
-      try {
-        if (fs.existsSync(this.authDir)) {
-          const files = fs.readdirSync(this.authDir)
-          if (files.length > 0) {
-            console.log(`Session ${this.sessionId} has auth files but no active socket. Attempting reconnection.`)
-            // Try to reconnect if we have auth files but no socket
-            if (!this.isConnecting) {
-              this.connect().catch(error => {
-                console.error(`Failed to auto-reconnect session ${this.sessionId}:`, error)
-              })
-            }
-          }
+      // Check if we have valid auth files for restoration
+      if (this.hasValidAuthFiles()) {
+        console.log(`Session ${this.sessionId} has valid auth files but no active socket.`)
+        
+        // If not currently connecting, attempt to restore the session
+        if (!this.isConnecting) {
+          console.log(`Attempting to restore session ${this.sessionId}`)
+          this.connectionState = 'connecting'
+          await this.updateSessionStatus('connecting')
+          
+          this.connect().catch(error => {
+            console.error(`Failed to restore session ${this.sessionId}:`, error)
+            this.connectionState = 'disconnected'
+            this.updateSessionStatus('disconnected')
+          })
         }
-      } catch (error) {
-        console.log(`Error checking auth files for session ${this.sessionId}:`, error)
+      } else {
+        this.connectionState = 'disconnected'
+        await this.updateSessionStatus('disconnected')
       }
     }
   }
@@ -499,10 +586,34 @@ export class WhatsAppService {
 
   private async syncContacts(): Promise<void> {
     try {
-      // Sync contacts from WhatsApp if available
-      console.log('Syncing contacts...')
+      console.log(`Syncing contacts for session ${this.sessionId}...`)
+      
+      // If store has contacts, sync them to database
+      if (this.store && this.store.contacts) {
+        const storeContacts = Object.values(this.store.contacts)
+        console.log(`Found ${storeContacts.length} contacts in store`)
+        
+        if (storeContacts.length > 0) {
+          await this.handleContactsUpdate(storeContacts)
+        }
+      }
     } catch (error) {
       console.error('Failed to sync contacts:', error)
+    }
+  }
+
+  async refreshContacts(): Promise<Contact[]> {
+    try {
+      console.log(`Manual contact refresh for session ${this.sessionId}`)
+      
+      // Sync contacts from store to database
+      await this.syncContacts()
+      
+      // Return updated contacts
+      return await this.getContacts()
+    } catch (error) {
+      console.error('Failed to refresh contacts:', error)
+      return []
     }
   }
 
