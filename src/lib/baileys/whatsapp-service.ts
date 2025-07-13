@@ -31,6 +31,7 @@ export class WhatsAppService {
   private isConnecting = false
   private reconnectAttempts = 0
   private maxReconnectAttempts = 5
+  private connectionState: string = 'disconnected'
   
   // Event callbacks
   public onQRCode?: (qr: string) => void
@@ -42,6 +43,7 @@ export class WhatsAppService {
     this.sessionId = config.sessionId
     this.authDir = path.join(process.cwd(), 'auth_sessions', this.sessionId)
     this.prisma = new PrismaClient()
+    this.connectionState = 'disconnected' // Initialize connection state
     
     // Create auth directory if it doesn't exist
     if (!fs.existsSync(this.authDir)) {
@@ -85,9 +87,14 @@ export class WhatsAppService {
         ...wsConfig,
       })
 
+      console.log(`Socket created for session ${this.sessionId}`)
+      this.connectionState = 'connecting'
+
       // Handle QR code
       this.socket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update
+        
+        console.log(`Connection update for session ${this.sessionId}:`, { connection, qr: !!qr, lastDisconnect: !!lastDisconnect })
         
         if (qr && this.onQRCode) {
           this.onQRCode(qr)
@@ -97,6 +104,12 @@ export class WhatsAppService {
           this.onConnectionUpdate(update)
         }
 
+        // Update connection state
+        if (connection) {
+          console.log(`Connection state changed for session ${this.sessionId}: ${this.connectionState} -> ${connection}`)
+          this.connectionState = connection
+        }
+
         if (connection === 'close') {
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut
@@ -104,7 +117,7 @@ export class WhatsAppService {
           console.log(`Connection closed for session ${this.sessionId}. Status code: ${statusCode}`)
           
           // Handle specific error codes
-          
+          this.connectionState = 'disconnected'
           await this.updateSessionStatus('disconnected')
           
           // Check if the error is related to WebSocket buffer utilities
@@ -134,11 +147,13 @@ export class WhatsAppService {
             this.reconnectAttempts = 0
           }
         } else if (connection === 'open') {
-          console.log('WhatsApp connection opened')
+          console.log(`WhatsApp connection opened for session ${this.sessionId}`)
+          this.connectionState = 'open'
           this.reconnectAttempts = 0
           await this.updateSessionStatus('connected')
           await this.syncContacts()
         } else if (connection === 'connecting') {
+          this.connectionState = 'connecting'
           await this.updateSessionStatus('connecting')
         }
       })
@@ -187,6 +202,7 @@ export class WhatsAppService {
     if (this.socket) {
       await this.socket.logout()
       this.socket = null
+      this.connectionState = 'disconnected'
       await this.updateSessionStatus('disconnected')
     }
   }
@@ -214,6 +230,7 @@ export class WhatsAppService {
       // Check if this is a stream error
       if (error instanceof Error && error.message.includes('stream errored out')) {
         console.log('Stream error detected, marking session as disconnected')
+        this.connectionState = 'disconnected'
         await this.updateSessionStatus('error')
         this.socket = null
       }
@@ -293,13 +310,14 @@ export class WhatsAppService {
   }
 
   isConnected(): boolean {
-    return this.socket?.user ? true : false
+    // Check if socket exists, connection is open, and user is authenticated
+    return !!(this.socket && this.connectionState === 'open' && this.socket.user)
   }
 
   getConnectionState(): string {
     if (!this.socket) return 'disconnected'
     if (this.isConnecting) return 'connecting'
-    return this.socket.user ? 'connected' : 'disconnected'
+    return this.connectionState
   }
 
   getSessionInfo() {
@@ -310,6 +328,43 @@ export class WhatsAppService {
       isConnecting: this.isConnecting,
       reconnectAttempts: this.reconnectAttempts,
       user: this.socket?.user || null
+    }
+  }
+
+  // Force refresh connection state by checking if socket is actually connected
+  async refreshConnectionState(): Promise<void> {
+    if (this.socket && this.socket.user) {
+      try {
+        // Try to get the socket state - if this works, we're connected
+        const state = this.socket.authState
+        if (state && state.creds && state.creds.me) {
+          this.connectionState = 'open'
+          await this.updateSessionStatus('connected')
+          console.log(`Refreshed connection state for session ${this.sessionId}: connected`)
+        }
+      } catch (error) {
+        console.log(`Failed to refresh connection state for session ${this.sessionId}:`, error)
+        this.connectionState = 'disconnected'
+        await this.updateSessionStatus('disconnected')
+      }
+    } else {
+      // Check if we have auth credentials but no active socket
+      try {
+        if (fs.existsSync(this.authDir)) {
+          const files = fs.readdirSync(this.authDir)
+          if (files.length > 0) {
+            console.log(`Session ${this.sessionId} has auth files but no active socket. Attempting reconnection.`)
+            // Try to reconnect if we have auth files but no socket
+            if (!this.isConnecting) {
+              this.connect().catch(error => {
+                console.error(`Failed to auto-reconnect session ${this.sessionId}:`, error)
+              })
+            }
+          }
+        }
+      } catch (error) {
+        console.log(`Error checking auth files for session ${this.sessionId}:`, error)
+      }
     }
   }
 

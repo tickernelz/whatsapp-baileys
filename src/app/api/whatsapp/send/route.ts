@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { whatsappManager } from '@/lib/baileys/whatsapp-service'
+import { PrismaClient } from '@/generated/prisma'
+
+const prisma = new PrismaClient()
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,9 +16,35 @@ export async function POST(request: NextRequest) {
 
     const service = whatsappManager.getInstance(sessionId)
     
+    // Get detailed connection info for debugging
+    let sessionInfo = service.getSessionInfo()
+    console.log(`Send message attempt for session ${sessionId}:`, sessionInfo)
+    
+    // Also check database status
+    const dbSession = await prisma.whatsAppSession.findUnique({
+      where: { sessionId }
+    })
+    console.log(`Database session status for ${sessionId}:`, dbSession)
+    
+    // If not connected, try to refresh connection state first
+    if (!service.isConnected()) {
+      console.log(`Attempting to refresh connection state for session ${sessionId}`)
+      await service.refreshConnectionState()
+      sessionInfo = service.getSessionInfo()
+      console.log(`After refresh for session ${sessionId}:`, sessionInfo)
+    }
+    
     if (!service.isConnected()) {
       return NextResponse.json({ 
-        error: 'WhatsApp is not connected' 
+        error: 'WhatsApp is not connected',
+        debug: {
+          sessionId,
+          connectionState: sessionInfo.connectionState,
+          isConnected: sessionInfo.isConnected,
+          isConnecting: sessionInfo.isConnecting,
+          hasSocket: !!sessionInfo.user,
+          reconnectAttempts: sessionInfo.reconnectAttempts
+        }
       }, { status: 400 })
     }
 
