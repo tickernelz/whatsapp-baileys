@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const dynamic = 'force-dynamic'
 import { whatsappManager } from '@/lib/baileys/whatsapp-service'
 import { PrismaClient } from '@/generated/prisma'
 import fs from 'fs'
@@ -8,7 +10,7 @@ const prisma = new PrismaClient()
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = request.nextUrl
     const sessionId = searchParams.get('sessionId')
 
     if (!sessionId) {
@@ -54,7 +56,7 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = request.nextUrl
     const sessionId = searchParams.get('sessionId')
 
     if (!sessionId) {

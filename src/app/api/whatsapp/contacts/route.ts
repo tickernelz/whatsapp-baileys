@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const dynamic = 'force-dynamic'
 import { PrismaClient } from '@/generated/prisma'
 
 const prisma = new PrismaClient()
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = request.nextUrl
     const sessionId = searchParams.get('sessionId')
 
     if (!sessionId) {
