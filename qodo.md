@@ -15,7 +15,7 @@
 | Styling           | TailwindCSS v3 with tailwind-merge + clsx |
 | DB ORM            | Prisma (output at `src/generated/prisma`) |
 | Database          | PostgreSQL (`DATABASE_URL` in `.env`) |
-| Utility Libraries | class-variance-authority, lucide-react |
+| Utility Libraries | class-variance-authority, lucide-react, baileys |
 
 ## 2. Directory Overview
 
