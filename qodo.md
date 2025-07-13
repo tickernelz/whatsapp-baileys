@@ -77,18 +77,16 @@ prisma/schema.prisma     # Database schema
 
 When searching for the latest documentation, follow this priority order:
 
-### 1. Context7 First (Primary Source)
-- **Baileys Wiki**: Use library ID `context7/baileys_wiki-docs-intro`
+### 1. DeepWiki (Primary Source)
+- Use `ask_question` with repository name (e.g., "whiskeysockets/baileys")
+- Use `read_wiki_contents` for comprehensive documentation
+- Use `read_wiki_structure` to explore available topics
+
+### 2. Context7 First (Secondary Source)
 - **Baileys Repository**: Use library ID `whiskeysockets/baileys`
 - **Next.js**: Use library ID `/vercel/next.js`
 - **Prisma**: Use library ID `/prisma/prisma`
 - **TailwindCSS**: Use library ID `/tailwindlabs/tailwindcss`
-
-### 2. DeepWiki (Secondary Source)
-If Context7 doesn't provide sufficient information:
-- Use `ask_question` with repository name (e.g., "whiskeysockets/baileys")
-- Use `read_wiki_contents` for comprehensive documentation
-- Use `read_wiki_structure` to explore available topics
 
 ### 3. Web Search (Last Resort)
 If both Context7 and DeepWiki don't help:
